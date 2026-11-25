@@ -16,7 +16,13 @@ static class DisplayPower
     const uint SWP_NOACTIVATE = 0x0010;
     const uint INPUT_MOUSE = 0;
     const uint MOUSEEVENTF_MOVE = 0x0001;
+    const uint POWER_REQUEST_CONTEXT_VERSION = 0;
+    const uint POWER_REQUEST_CONTEXT_SIMPLE_STRING = 0x1;
+    const int PowerRequestExecutionRequired = 3;
     static readonly IntPtr Topmost = new(-1);
+    static readonly object ExecLock = new();
+    static IntPtr _execRequest = IntPtr.Zero;
+    static bool _execHeld;
 
     public static void KeepSystemAwake(bool displayRequired)
     {
@@ -24,10 +30,60 @@ static class DisplayPower
         if (displayRequired)
             flags |= ES_DISPLAY_REQUIRED;
         SetThreadExecutionState(flags);
+        EnsureExecutionRequest();
     }
 
     public static void AllowSleep()
-        => SetThreadExecutionState(ES_CONTINUOUS);
+    {
+        SetThreadExecutionState(ES_CONTINUOUS);
+        ReleaseExecutionRequest();
+    }
+
+    static void EnsureExecutionRequest()
+    {
+        lock (ExecLock)
+        {
+            if (_execHeld)
+                return;
+            try
+            {
+                if (_execRequest == IntPtr.Zero)
+                {
+                    var ctx = new POWER_REQUEST_CONTEXT
+                    {
+                        Version = POWER_REQUEST_CONTEXT_VERSION,
+                        Flags = POWER_REQUEST_CONTEXT_SIMPLE_STRING,
+                        SimpleReasonString = "SurfaceFrame Home Assistant listener"
+                    };
+                    var h = PowerCreateRequest(ref ctx);
+                    if (h == IntPtr.Zero || h == new IntPtr(-1))
+                        return;
+                    _execRequest = h;
+                }
+                if (PowerSetRequest(_execRequest, PowerRequestExecutionRequired))
+                    _execHeld = true;
+            }
+            catch { }
+        }
+    }
+
+    static void ReleaseExecutionRequest()
+    {
+        lock (ExecLock)
+        {
+            if (_execRequest == IntPtr.Zero)
+                return;
+            try
+            {
+                if (_execHeld)
+                    PowerClearRequest(_execRequest, PowerRequestExecutionRequired);
+                CloseHandle(_execRequest);
+            }
+            catch { }
+            _execHeld = false;
+            _execRequest = IntPtr.Zero;
+        }
+    }
 
     public static void MonitorOff(IntPtr hwnd)
     {
@@ -119,6 +175,29 @@ static class DisplayPower
     [DllImport("user32.dll", SetLastError = true)]
     static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int x, int y, int cx, int cy, uint flags);
 
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    struct POWER_REQUEST_CONTEXT
+    {
+        public uint Version;
+        public uint Flags;
+        [MarshalAs(UnmanagedType.LPWStr)]
+        public string SimpleReasonString;
+        public IntPtr _pad1;
+        public IntPtr _pad2;
+    }
+
     [DllImport("kernel32.dll")]
     static extern uint SetThreadExecutionState(uint esFlags);
+
+    [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
+    static extern IntPtr PowerCreateRequest(ref POWER_REQUEST_CONTEXT context);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    static extern bool PowerSetRequest(IntPtr powerRequest, int requestType);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    static extern bool PowerClearRequest(IntPtr powerRequest, int requestType);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    static extern bool CloseHandle(IntPtr handle);
 }
