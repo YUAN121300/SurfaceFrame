@@ -66,7 +66,8 @@ public partial class MainWindow : Window
     bool _remoteLocked;
     string? _lastRemoteAlbum;
     string? _pendingRemoteAlbum;
-    bool _remoteOptionsSynced;
+    string? _lastRemoteOptionsSignature;
+    DateTime _lastAlbumsRefresh = DateTime.MinValue;
     DateTime _lastPowerAssert = DateTime.MinValue;
     DateTime _lastAwake = DateTime.MinValue;
     DateTime _lastImmich = DateTime.MinValue;
@@ -960,7 +961,14 @@ public partial class MainWindow : Window
 
     void MaybeImmich(DateTime now)
     {
-        if (!_immichEnabled || _http == null || string.IsNullOrEmpty(_config.ImmichApiKey))
+        if (_http == null || string.IsNullOrEmpty(_config.ImmichApiKey) || _config.Demo.Enabled)
+            return;
+        if (now - _lastAlbumsRefresh >= TimeSpan.FromMinutes(20))
+        {
+            _lastAlbumsRefresh = now;
+            _ = FetchAlbumsListAsync();
+        }
+        if (!_immichEnabled)
             return;
         if (now - _lastImmich < TimeSpan.FromMinutes(20))
             return;
@@ -1076,18 +1084,20 @@ public partial class MainWindow : Window
             await Dispatcher.InvokeAsync(() =>
             {
                 _albums = list;
+                var prevName = _activeAlbumName;
                 var match = list.FirstOrDefault(a => string.Equals(a.Id, _activeAlbumId, StringComparison.OrdinalIgnoreCase));
                 if (match != null && _immichEnabled)
                     _activeAlbumName = match.Name;
                 UpdateHeaderAlbums();
+                SyncRemoteAlbumOptionsToHa(DateTime.UtcNow);
+                if (match != null && _immichEnabled && !string.Equals(prevName, match.Name, StringComparison.Ordinal))
+                    SyncSelectedAlbumToHa(match.Name, DateTime.UtcNow);
                 if (_pendingRemoteAlbum != null)
                 {
                     var pending = _pendingRemoteAlbum;
                     _pendingRemoteAlbum = null;
                     TryApplyRemoteAlbum(pending);
                 }
-                if (!_remoteOptionsSynced)
-                    SyncRemoteAlbumOptionsToHa(DateTime.UtcNow);
                 if (_pickerOpen && _pinUnlocked)
                     PopulateAlbumList();
             }, DispatcherPriority.Background, _stop.Token);
@@ -1371,7 +1381,14 @@ public partial class MainWindow : Window
             .Distinct(StringComparer.Ordinal)
             .ToList();
         opts.Add("本地相册");
-        _remoteOptionsSynced = _runtime.CallServiceData("input_select", "set_options", albumEntityId, new { options = opts }, now);
+        var sig = string.Join("\u001F", opts);
+        if (string.Equals(sig, _lastRemoteOptionsSignature, StringComparison.Ordinal))
+            return;
+        if (_runtime.CallServiceData("input_select", "set_options", albumEntityId, new { options = opts }, now))
+        {
+            _lastRemoteOptionsSignature = sig;
+            Log.Info($"remote album options synced ({opts.Count})");
+        }
     }
 
     void SyncSelectedAlbumToHa(string label, DateTime now)
