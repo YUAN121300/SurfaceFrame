@@ -1,0 +1,95 @@
+{
+  "album": {
+    "folder": "Photos",
+    "crop": false,
+    "intervalSeconds": 30,
+    "pin": ""
+  },
+  "homeAssistant": {
+    "url": "ws://ha.example:8123/api/websocket",
+    "tokenEnv": "HA_TOKEN",
+    "entities": [
+      { "entityId": "light.demo_ceiling", "name": "客厅主灯", "kind": "light", "group": "客厅" },
+      { "entityId": "switch.demo_plug", "name": "插座", "kind": "switch", "group": "客厅" },
+      { "entityId": "sensor.demo_temp", "name": "温度", "kind": "sensor" }
+    ],
+    "scenes": [
+      {
+        "id": "evening",
+        "name": "晚间模式",
+        "subtitle": "一键氛围",
+        "icon": "moon",
+        "mode": "trigger",
+        "domain": "input_boolean",
+        "entityIds": ["input_boolean.demo_evening_mode"],
+        "warmAccent": true
+      },
+      {
+        "id": "all_off",
+        "name": "全屋关灯",
+        "subtitle": "一键熄灯",
+        "icon": "power",
+        "mode": "turn_off",
+        "domain": "light",
+        "entityIds": ["light.demo_ceiling"]
+      }
+    ],
+    "dashboard": {
+      "weatherEntity": "weather.demo_home",
+      "rooms": [
+        { "name": "客厅", "tempEntity": "sensor.demo_living_temp", "humidityEntity": "sensor.demo_living_hum" },
+        { "name": "卧室", "tempEntity": "sensor.demo_bed_temp", "humidityEntity": "sensor.demo_bed_hum" }
+      ],
+      "vehicle": {
+        "title": "电动车状态",
+        "batteryEntity": "sensor.demo_ev_battery",
+        "rangeEntity": "sensor.demo_ev_range",
+        "stateEntity": "sensor.demo_ev_state",
+        "pluggedEntity": "binary_sensor.demo_ev_plugged",
+        "insideTempEntity": "sensor.demo_ev_inside_temp",
+        "outsideTempEntity": "sensor.demo_ev_outside_temp",
+        "doorsEntity": "binary_sensor.demo_ev_doors",
+        "sentryEntity": "binary_sensor.demo_ev_sentry"
+      },
+      "climate": {
+        "title": "暖通与空调",
+        "heaterEntity": "climate.demo_heater",
+        "observerEntity": "sensor.demo_heater_status",
+        "supplyTempEntity": "sensor.demo_supply_temp",
+        "returnTempEntity": "sensor.demo_return_temp",
+        "targetTempEntity": "sensor.demo_target_temp",
+        "ac1Name": "客厅空调",
+        "ac1Entity": "climate.demo_living_ac",
+        "ac2Name": "卧室空调",
+        "ac2Entity": "climate.demo_bed_ac"
+      },
+      "energy": {
+        "title": "本月用能走势与费用",
+        "powerEntity": "sensor.demo_house_power",
+        "electricityEntity": "sensor.demo_electricity_cost",
+        "gasEntity": "sensor.demo_gas_cost",
+        "currencySymbol": "¥"
+      },
+      "devices": [
+        { "name": "扫地机器人", "entityId": "vacuum.demo_robot", "kind": "vacuum" },
+        { "name": "洗碗机", "entityId": "switch.demo_dishwasher", "kind": "dishwasher", "extraEntityId": "sensor.demo_dishwasher_remaining" },
+        { "name": "客厅电视", "entityId": "media_player.demo_tv", "kind": "media" },
+        { "name": "UPS 电源", "entityId": "sensor.demo_ups_battery", "kind": "ups", "extraEntityId": "sensor.demo_ups_status" }
+      ]
+    },
+    "presenceEntityId": "person.demo",
+    "presenceHome": "home",
+    "presenceAway": "not_home"
+  },
+  "immich": {
+    "enabled": false,
+    "baseUrl": "https://immich.example",
+    "apiKeyEnv": "IMMICH_API_KEY",
+    "albumId": "00000000-0000-0000-0000-000000000000",
+    "cacheFolder": "Cache",
+    "maxPhotos": 60
+  },
+  "demo": {
+    "enabled": true
+  }
+}

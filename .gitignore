@@ -1,0 +1,10 @@
+bin/
+obj/
+frame.json
+frame.private.json
+Cache/
+*.log
+*.partial
+dist/
+.DS_Store
+*.zip
