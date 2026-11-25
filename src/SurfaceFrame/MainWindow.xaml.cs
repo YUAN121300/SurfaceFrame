@@ -365,13 +365,14 @@ public partial class MainWindow : Window
 
     void WakeToAlbum()
     {
-        if (_hwnd != IntPtr.Zero)
-            DisplayPower.MonitorOn(_hwnd);
         DisplayPower.KeepSystemAwake(true);
+        DisplayPower.MonitorOn(_hwnd);
         if (ShieldOn)
             _gestures.Invalidate();
         ShieldLayer.Visibility = Visibility.Collapsed;
         ShowPage(Page.Photos);
+        FitScreen();
+        Activate();
         Log.Info("display on requested");
         _lastPowerAssert = DateTime.UtcNow;
     }

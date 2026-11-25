@@ -14,6 +14,8 @@ static class DisplayPower
     const uint SWP_NOMOVE = 0x0002;
     const uint SWP_NOSIZE = 0x0001;
     const uint SWP_NOACTIVATE = 0x0010;
+    const uint INPUT_MOUSE = 0;
+    const uint MOUSEEVENTF_MOVE = 0x0001;
     static readonly IntPtr Topmost = new(-1);
 
     public static void KeepSystemAwake(bool displayRequired)
@@ -36,9 +38,24 @@ static class DisplayPower
 
     public static void MonitorOn(IntPtr hwnd)
     {
-        if (hwnd == IntPtr.Zero)
-            return;
-        SendMessage(hwnd, WM_SYSCOMMAND, (IntPtr)SC_MONITORPOWER, (IntPtr)(-1));
+        KeepSystemAwake(true);
+        if (hwnd != IntPtr.Zero)
+            SendMessage(hwnd, WM_SYSCOMMAND, (IntPtr)SC_MONITORPOWER, (IntPtr)(-1));
+        WakeInputPulse();
+    }
+
+    static void WakeInputPulse()
+    {
+        try
+        {
+            var input = new INPUT
+            {
+                type = INPUT_MOUSE,
+                mi = new MOUSEINPUT { dx = 0, dy = 0, dwFlags = MOUSEEVENTF_MOVE }
+            };
+            SendInput(1, new[] { input }, Marshal.SizeOf<INPUT>());
+        }
+        catch { }
     }
 
     public static void KeepTopmost(IntPtr hwnd)
@@ -74,6 +91,27 @@ static class DisplayPower
 
     [ComImport, Guid("56FDF344-FD6D-11d0-958A-006097C9A090")]
     class TaskbarList { }
+
+    [StructLayout(LayoutKind.Sequential)]
+    struct INPUT
+    {
+        public uint type;
+        public MOUSEINPUT mi;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    struct MOUSEINPUT
+    {
+        public int dx;
+        public int dy;
+        public uint mouseData;
+        public uint dwFlags;
+        public uint time;
+        public UIntPtr dwExtraInfo;
+    }
+
+    [DllImport("user32.dll", SetLastError = true)]
+    static extern uint SendInput(uint nInputs, INPUT[] pInputs, int cbSize);
 
     [DllImport("user32.dll", SetLastError = true)]
     static extern IntPtr SendMessage(IntPtr hWnd, int msg, IntPtr wParam, IntPtr lParam);
