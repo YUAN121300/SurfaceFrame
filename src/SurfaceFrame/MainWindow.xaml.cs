@@ -225,13 +225,19 @@ public partial class MainWindow : Window
         Width = SystemParameters.PrimaryScreenWidth;
         Height = SystemParameters.PrimaryScreenHeight;
         Topmost = true;
+        if (_hwnd != IntPtr.Zero)
+            DisplayPower.KeepTopmost(_hwnd);
     }
 
     IntPtr WndProc(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
     {
         const int WM_POWERBROADCAST = 0x0218;
+        const int WM_DISPLAYCHANGE = 0x007E;
+        const int WM_DPICHANGED = 0x02E0;
         if (msg == WM_POWERBROADCAST)
             _powerWake = true;
+        else if (msg is WM_DISPLAYCHANGE or WM_DPICHANGED)
+            Dispatcher.BeginInvoke(DispatcherPriority.Background, new Action(FitScreen));
         return IntPtr.Zero;
     }
 
@@ -307,6 +313,13 @@ public partial class MainWindow : Window
             {
                 _lastClockUi = now;
                 UpdateClockText();
+                if (WindowState != WindowState.Normal
+                    || Math.Abs(Left) > 1 || Math.Abs(Top) > 1
+                    || Math.Abs(Width - SystemParameters.PrimaryScreenWidth) > 1
+                    || Math.Abs(Height - SystemParameters.PrimaryScreenHeight) > 1)
+                {
+                    FitScreen();
+                }
             }
 
             RefreshHeaderStatus(snap);
