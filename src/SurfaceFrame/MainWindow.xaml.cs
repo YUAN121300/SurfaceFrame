@@ -226,17 +226,21 @@ public partial class MainWindow : Window
         Height = SystemParameters.PrimaryScreenHeight;
         Topmost = true;
         if (_hwnd != IntPtr.Zero)
+        {
+            DisplayPower.MarkFullscreen(_hwnd, true);
             DisplayPower.KeepTopmost(_hwnd);
+        }
     }
 
     IntPtr WndProc(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
     {
+        const int WM_SETTINGCHANGE = 0x001A;
         const int WM_POWERBROADCAST = 0x0218;
         const int WM_DISPLAYCHANGE = 0x007E;
         const int WM_DPICHANGED = 0x02E0;
         if (msg == WM_POWERBROADCAST)
             _powerWake = true;
-        else if (msg is WM_DISPLAYCHANGE or WM_DPICHANGED)
+        else if (msg is WM_DISPLAYCHANGE or WM_DPICHANGED or WM_SETTINGCHANGE)
             Dispatcher.BeginInvoke(DispatcherPriority.Background, new Action(FitScreen));
         return IntPtr.Zero;
     }
@@ -305,7 +309,10 @@ public partial class MainWindow : Window
             {
                 DisplayPower.KeepSystemAwake(!shield);
                 if (_hwnd != IntPtr.Zero)
+                {
+                    DisplayPower.MarkFullscreen(_hwnd, true);
                     DisplayPower.KeepTopmost(_hwnd);
+                }
                 _lastAwake = now;
             }
 

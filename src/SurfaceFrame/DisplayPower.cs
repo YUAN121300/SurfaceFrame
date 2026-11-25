@@ -48,6 +48,33 @@ static class DisplayPower
         SetWindowPos(hwnd, Topmost, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
     }
 
+    public static void MarkFullscreen(IntPtr hwnd, bool fullscreen)
+    {
+        if (hwnd == IntPtr.Zero)
+            return;
+        try
+        {
+            var taskbar = (ITaskbarList2)new TaskbarList();
+            taskbar.HrInit();
+            taskbar.MarkFullscreenWindow(hwnd, fullscreen);
+        }
+        catch { }
+    }
+
+    [ComImport, Guid("602D4995-B13A-429b-A66E-1935E44F4317"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+    interface ITaskbarList2
+    {
+        void HrInit();
+        void AddTab(IntPtr hwnd);
+        void DeleteTab(IntPtr hwnd);
+        void ActivateTab(IntPtr hwnd);
+        void SetActiveAlt(IntPtr hwnd);
+        void MarkFullscreenWindow(IntPtr hwnd, [MarshalAs(UnmanagedType.Bool)] bool fFullscreen);
+    }
+
+    [ComImport, Guid("56FDF344-FD6D-11d0-958A-006097C9A090")]
+    class TaskbarList { }
+
     [DllImport("user32.dll", SetLastError = true)]
     static extern IntPtr SendMessage(IntPtr hWnd, int msg, IntPtr wParam, IntPtr lParam);
 
