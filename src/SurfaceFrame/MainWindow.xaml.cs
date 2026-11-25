@@ -63,6 +63,10 @@ public partial class MainWindow : Window
     bool _pinUnlocked;
     string _pinBuffer = "";
     IReadOnlyList<string>? _pendingRandomFiles;
+    bool _remoteLocked;
+    string? _lastRemoteAlbum;
+    string? _pendingRemoteAlbum;
+    bool _remoteOptionsSynced;
     DateTime _lastPowerAssert = DateTime.MinValue;
     DateTime _lastAwake = DateTime.MinValue;
     DateTime _lastImmich = DateTime.MinValue;
@@ -250,7 +254,7 @@ public partial class MainWindow : Window
                 _forcePowerOff = true;
             _sawMaintenance = maintenance;
 
-            if (command == DisplayCommand.TurnOn)
+            if (command == DisplayCommand.TurnOn && !_remoteLocked)
                 WakeToAlbum();
             else if (command == DisplayCommand.TurnOff && !maintenance)
             {
@@ -258,13 +262,16 @@ public partial class MainWindow : Window
                 BlackShieldThenMonitorOff();
             }
 
-            if (_presence.ConsumeArrivedHome())
+            if (_presence.ConsumeArrivedHome() && !_remoteLocked)
                 ShowPage(Page.Photos);
+
+            SyncRemoteControls(snap, now, maintenance);
 
             if ((_page == Page.Ha || _page == Page.Info) && _idle.Due(now, true))
                 ShowPage(Page.Photos);
 
-            var shield = _presence.Shield && !maintenance;
+            var shield = (_presence.Shield || _remoteLocked) && !maintenance;
+            var monitorLatched = _presence.MonitorLatched || _remoteLocked;
             var shieldVisibility = shield ? Visibility.Visible : Visibility.Collapsed;
             if (ShieldLayer.Visibility != shieldVisibility)
                 _gestures.Invalidate();
@@ -276,7 +283,7 @@ public partial class MainWindow : Window
                     ShieldText.Text = ShieldCaption(snap.Presence);
             }
 
-            if (_presence.MonitorLatched && !maintenance
+            if (monitorLatched && !maintenance
                 && (_powerWake || _forcePowerOff || now - _lastPowerAssert >= TimeSpan.FromSeconds(3)))
             {
                 BlackShieldThenMonitorOff();
@@ -327,7 +334,7 @@ public partial class MainWindow : Window
         Dispatcher.BeginInvoke(DispatcherPriority.ContextIdle, new Action(() =>
         {
             _offQueued = false;
-            if (_stop.IsCancellationRequested || !_presence.MonitorLatched || _presence.MaintenanceActive(DateTime.UtcNow))
+            if (_stop.IsCancellationRequested || !(_presence.MonitorLatched || _remoteLocked) || _presence.MaintenanceActive(DateTime.UtcNow))
                 return;
             DisplayPower.KeepSystemAwake(false);
             DisplayPower.MonitorOff(_hwnd);
@@ -444,7 +451,7 @@ public partial class MainWindow : Window
     protected override void OnPreviewMouseLeftButtonDown(MouseButtonEventArgs e)
     {
         e.Handled = true;
-        if (ShieldOn && _presence.MonitorLatched && !_presence.MaintenanceActive(DateTime.UtcNow))
+        if (ShieldOn && (_presence.MonitorLatched || _remoteLocked) && !_presence.MaintenanceActive(DateTime.UtcNow))
         {
             BlackShieldThenMonitorOff();
             return;
@@ -639,7 +646,7 @@ public partial class MainWindow : Window
         }
         var guard = outcome.GuardWake;
         Pump();
-        if (guard && _presence.MonitorLatched && !_presence.MaintenanceActive(DateTime.UtcNow))
+        if (guard && (_presence.MonitorLatched || _remoteLocked) && !_presence.MaintenanceActive(DateTime.UtcNow))
             BlackShieldThenMonitorOff();
     }
 
@@ -1073,7 +1080,15 @@ public partial class MainWindow : Window
                 if (match != null && _immichEnabled)
                     _activeAlbumName = match.Name;
                 UpdateHeaderAlbums();
-                if (_pickerOpen)
+                if (_pendingRemoteAlbum != null)
+                {
+                    var pending = _pendingRemoteAlbum;
+                    _pendingRemoteAlbum = null;
+                    TryApplyRemoteAlbum(pending);
+                }
+                if (!_remoteOptionsSynced)
+                    SyncRemoteAlbumOptionsToHa(DateTime.UtcNow);
+                if (_pickerOpen && _pinUnlocked)
                     PopulateAlbumList();
             }, DispatcherPriority.Background, _stop.Token);
         }
@@ -1164,7 +1179,7 @@ public partial class MainWindow : Window
                 AlbumPickerTitle.Text = "输入相册密码";
                 AlbumPickerSub.Text = "更改展示相册前需验证密码";
                 PinLockPanel.Visibility = Visibility.Visible;
-                AlbumListPanel.Visibility = Visibility.Collapsed;
+                AlbumListScroll.Visibility = Visibility.Collapsed;
                 UpdatePinDots();
             }
             else
@@ -1173,7 +1188,7 @@ public partial class MainWindow : Window
                 AlbumPickerTitle.Text = "选择展示相册";
                 AlbumPickerSub.Text = "从 NAS Immich 全相册联网随机播放或切换本地目录";
                 PinLockPanel.Visibility = Visibility.Collapsed;
-                AlbumListPanel.Visibility = Visibility.Visible;
+                AlbumListScroll.Visibility = Visibility.Visible;
                 PopulateAlbumList();
                 if (_http != null && !_config.Demo.Enabled)
                     _ = FetchAlbumsListAsync();
@@ -1221,7 +1236,7 @@ public partial class MainWindow : Window
                         AlbumPickerTitle.Text = "选择展示相册";
                         AlbumPickerSub.Text = "从 NAS Immich 全相册联网随机播放或切换本地目录";
                         PinLockPanel.Visibility = Visibility.Collapsed;
-                        AlbumListPanel.Visibility = Visibility.Visible;
+                        AlbumListScroll.Visibility = Visibility.Visible;
                         PopulateAlbumList();
                         if (_http != null && !_config.Demo.Enabled)
                             _ = FetchAlbumsListAsync();
@@ -1256,7 +1271,122 @@ public partial class MainWindow : Window
         AlbumPickerOverlay.Visibility = Visibility.Collapsed;
     }
 
-    void SelectAlbum(string target)
+    void SyncRemoteControls(HaSnapshot snap, DateTime now, bool maintenance)
+    {
+        if (snap.Phase != ConnPhase.Live)
+            return;
+
+        var lockId = _config.HomeAssistant.RemoteLockEntityId;
+        if (!string.IsNullOrEmpty(lockId))
+        {
+            var lockedNow = IsOn(snap.AllStates, lockId);
+            if (lockedNow && !_remoteLocked)
+            {
+                _remoteLocked = true;
+                Log.Info("remote lock on");
+                if (!maintenance)
+                    BlackShieldThenMonitorOff();
+            }
+            else if (!lockedNow && _remoteLocked)
+            {
+                _remoteLocked = false;
+                Log.Info("remote lock off");
+                if (!_presence.Shield)
+                    WakeToAlbum();
+            }
+        }
+
+        var albumEntityId = _config.HomeAssistant.RemoteAlbumEntityId;
+        if (!string.IsNullOrEmpty(albumEntityId) && Val(snap.AllStates, albumEntityId) is string remoteVal)
+        {
+            if (!string.Equals(remoteVal, _lastRemoteAlbum, StringComparison.Ordinal))
+            {
+                _lastRemoteAlbum = remoteVal;
+                TryApplyRemoteAlbum(remoteVal);
+            }
+        }
+    }
+
+    void TryApplyRemoteAlbum(string remoteVal)
+    {
+        var trimmed = remoteVal.Trim();
+        if (string.IsNullOrEmpty(trimmed))
+            return;
+
+        if (string.Equals(trimmed, "本地相册", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(trimmed, "local", StringComparison.OrdinalIgnoreCase))
+        {
+            if (_immichEnabled)
+            {
+                Log.Info("remote album switched local");
+                SelectAlbum("local", fromRemote: true);
+            }
+            return;
+        }
+
+        if (Guid.TryParse(trimmed, out var guid))
+        {
+            var idStr = guid.ToString("D");
+            if (!_immichEnabled || !string.Equals(idStr, _activeAlbumId, StringComparison.OrdinalIgnoreCase))
+            {
+                Log.Info("remote album switched " + idStr);
+                SelectAlbum(idStr, fromRemote: true);
+            }
+            return;
+        }
+
+        if (_albums.Count == 0)
+        {
+            _pendingRemoteAlbum = trimmed;
+            return;
+        }
+
+        var match = _albums.FirstOrDefault(a => string.Equals(a.Name.Trim(), trimmed, StringComparison.OrdinalIgnoreCase))
+            ?? _albums.FirstOrDefault(a => a.Name.Contains(trimmed, StringComparison.OrdinalIgnoreCase));
+        if (match == null)
+        {
+            Log.Info("remote album not found: " + trimmed);
+            return;
+        }
+        if (!_immichEnabled || !string.Equals(match.Id, _activeAlbumId, StringComparison.OrdinalIgnoreCase))
+        {
+            Log.Info("remote album switched " + match.Id);
+            SelectAlbum(match.Id, fromRemote: true);
+        }
+    }
+
+    void SyncRemoteAlbumOptionsToHa(DateTime now)
+    {
+        var albumEntityId = _config.HomeAssistant.RemoteAlbumEntityId;
+        if (string.IsNullOrEmpty(albumEntityId) || !albumEntityId.StartsWith("input_select.", StringComparison.OrdinalIgnoreCase))
+            return;
+        var snap = _runtime.Take();
+        if (snap.Phase != ConnPhase.Live || _albums.Count == 0)
+            return;
+
+        var opts = _albums
+            .OrderByDescending(a => a.AssetCount)
+            .Select(a => a.Name.Trim())
+            .Where(n => !string.IsNullOrEmpty(n))
+            .Distinct(StringComparer.Ordinal)
+            .ToList();
+        opts.Add("本地相册");
+        _remoteOptionsSynced = _runtime.CallServiceData("input_select", "set_options", albumEntityId, new { options = opts }, now);
+    }
+
+    void SyncSelectedAlbumToHa(string label, DateTime now)
+    {
+        var albumEntityId = _config.HomeAssistant.RemoteAlbumEntityId;
+        if (string.IsNullOrEmpty(albumEntityId))
+            return;
+        _lastRemoteAlbum = label;
+        if (albumEntityId.StartsWith("input_select.", StringComparison.OrdinalIgnoreCase))
+            _runtime.CallServiceData("input_select", "select_option", albumEntityId, new { option = label }, now);
+        else if (albumEntityId.StartsWith("input_text.", StringComparison.OrdinalIgnoreCase))
+            _runtime.CallServiceData("input_text", "set_value", albumEntityId, new { value = label }, now);
+    }
+
+    void SelectAlbum(string target, bool fromRemote = false)
     {
         CloseAlbumPicker();
         CancelLivePhoto();
@@ -1273,8 +1403,11 @@ public partial class MainWindow : Window
             ConfigLoader.SaveImmichSelection(_config.PublicPath, null);
             UpdateHeaderAlbums();
             AlbumStatusPill.Visibility = Visibility.Collapsed;
-            ShowPage(Page.Photos);
+            if (!_remoteLocked && !ShieldOn)
+                ShowPage(Page.Photos);
             ReloadAlbum(PhotoDeck.List(_albumFolder), usingCache: false);
+            if (!fromRemote)
+                SyncSelectedAlbumToHa("本地相册", DateTime.UtcNow);
             Log.Info("album switched local");
             return;
         }
@@ -1292,11 +1425,14 @@ public partial class MainWindow : Window
         UpdateHeaderAlbums();
         LoadActiveLiveMap();
 
-        ShowPage(Page.Photos);
+        if (!_remoteLocked && !ShieldOn)
+            ShowPage(Page.Photos);
         var cached = ImmichSync.ListCache(_cacheFolder);
         if (cached.Count > 0)
             ReloadAlbum(cached, usingCache: true);
-        TriggerImmichSync(DateTime.UtcNow, showPill: cached.Count == 0, isSwitch: true);
+        TriggerImmichSync(DateTime.UtcNow, showPill: cached.Count == 0 && !_remoteLocked && !ShieldOn, isSwitch: true);
+        if (!fromRemote && found != null)
+            SyncSelectedAlbumToHa(found.Name, DateTime.UtcNow);
         Log.Info("album switched " + _activeAlbumId);
     }
 
@@ -1314,7 +1450,10 @@ public partial class MainWindow : Window
             });
         }
 
-        foreach (var album in _albums.Take(8))
+        var ordered = _albums
+            .OrderByDescending(a => _immichEnabled && string.Equals(a.Id, _activeAlbumId, StringComparison.OrdinalIgnoreCase))
+            .ThenByDescending(a => a.AssetCount);
+        foreach (var album in ordered)
         {
             var isSelected = _immichEnabled && string.Equals(album.Id, _activeAlbumId, StringComparison.OrdinalIgnoreCase);
             var countLabel = $"{album.AssetCount:N0} 张 · 全相册联网随机播放";

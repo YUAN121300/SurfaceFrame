@@ -217,6 +217,9 @@ public sealed class HaClientLogic
     }
 
     public bool TryCallService(string domain, string service, object target, out string? json)
+        => TryCallService(domain, service, target, null, out json);
+
+    public bool TryCallService(string domain, string service, object target, object? serviceData, out string? json)
     {
         if (string.IsNullOrWhiteSpace(domain) || string.IsNullOrWhiteSpace(service))
         {
@@ -224,7 +227,7 @@ public sealed class HaClientLogic
             return false;
         }
         var id = ++_nextId;
-        json = ServiceJson(id, domain, service, target);
+        json = ServiceJson(id, domain, service, target, serviceData);
         return true;
     }
 
@@ -616,15 +619,25 @@ public sealed class HaClientLogic
         _transportFault = true;
     }
 
-    static string ServiceJson(int id, string domain, string service, object entityIds)
-        => JsonSerializer.Serialize(new
-        {
-            id,
-            type = "call_service",
-            domain,
-            service,
-            target = new { entity_id = entityIds }
-        });
+    static string ServiceJson(int id, string domain, string service, object entityIds, object? serviceData = null)
+        => serviceData == null
+            ? JsonSerializer.Serialize(new
+            {
+                id,
+                type = "call_service",
+                domain,
+                service,
+                target = new { entity_id = entityIds }
+            })
+            : JsonSerializer.Serialize(new
+            {
+                id,
+                type = "call_service",
+                domain,
+                service,
+                service_data = serviceData,
+                target = new { entity_id = entityIds }
+            });
 
     public PendingKind PendingOf(string entityId)
     {

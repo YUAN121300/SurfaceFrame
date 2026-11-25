@@ -90,7 +90,9 @@ public sealed record HaSettings(
     string PresenceAway,
     IReadOnlyList<EntityConfig>? InfoEntities = null,
     IReadOnlyList<SceneConfig>? Scenes = null,
-    DashboardConfig? Dashboard = null)
+    DashboardConfig? Dashboard = null,
+    string? RemoteLockEntityId = null,
+    string? RemoteAlbumEntityId = null)
 {
     public IReadOnlyList<EntityConfig> AllTrackedInfoEntities()
     {
@@ -101,6 +103,8 @@ public sealed record HaSettings(
             if (!string.IsNullOrWhiteSpace(id) && seen.Add(id))
                 list.Add(new EntityConfig(id, id, EntityKind.Sensor));
         }
+        Add(RemoteLockEntityId);
+        Add(RemoteAlbumEntityId);
         if (InfoEntities != null)
         {
             foreach (var e in InfoEntities)
@@ -333,7 +337,9 @@ public static class ConfigLoader
                 string.IsNullOrWhiteSpace(ha.PresenceAway) ? "not_home" : ha.PresenceAway!,
                 infoEntities,
                 scenes,
-                dashboard),
+                dashboard,
+                CleanId(ha.RemoteLockEntityId),
+                CleanId(ha.RemoteAlbumEntityId)),
             Immich = new ImmichSettings(
                 immichEnabled && validImmich,
                 immichUrl,
@@ -524,6 +530,8 @@ public static class ConfigLoader
         public string? PresenceEntityId { get; set; }
         public string? PresenceHome { get; set; }
         public string? PresenceAway { get; set; }
+        public string? RemoteLockEntityId { get; set; }
+        public string? RemoteAlbumEntityId { get; set; }
     }
 
     sealed class SceneFile

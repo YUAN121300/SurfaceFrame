@@ -79,7 +79,9 @@
     },
     "presenceEntityId": "person.demo",
     "presenceHome": "home",
-    "presenceAway": "not_home"
+    "presenceAway": "not_home",
+    "remoteLockEntityId": "input_boolean.surface_frame_lock",
+    "remoteAlbumEntityId": "input_select.surface_frame_album"
   },
   "immich": {
     "enabled": false,

@@ -1060,6 +1060,17 @@ static class Program
         C.True(openCfg.HomeAssistant.Scenes is { Count: >= 1 }, "v8.example-scenes");
         C.True(openCfg.HomeAssistant.Dashboard != null, "v8.example-dashboard");
         C.True(openCfg.HomeAssistant.AllTrackedInfoEntities().Any(e => e.EntityId == "weather.demo_home"), "v8.tracked-dashboard");
+        C.Equal(openCfg.HomeAssistant.RemoteLockEntityId, "input_boolean.surface_frame_lock", "v8.remote-lock-cfg");
+        C.Equal(openCfg.HomeAssistant.RemoteAlbumEntityId, "input_select.surface_frame_album", "v8.remote-album-cfg");
+        C.True(openCfg.HomeAssistant.AllTrackedInfoEntities().Any(e => e.EntityId == "input_boolean.surface_frame_lock"), "v8.tracked-remote-lock");
+        C.True(openCfg.HomeAssistant.AllTrackedInfoEntities().Any(e => e.EntityId == "input_select.surface_frame_album"), "v8.tracked-remote-album");
+
+        var svcLogic = NewLogic();
+        C.True(svcLogic.TryCallService("input_select", "select_option", "input_select.surface_frame_album", new { option = "Travel" }, out var svcDataJson) && svcDataJson != null, "v8.service-data-ok");
+        using (var sdDoc = JsonDocument.Parse(svcDataJson!))
+        {
+            C.Equal(sdDoc.RootElement.GetProperty("service_data").GetProperty("option").GetString(), "Travel", "v8.service-data-option");
+        }
     }
 
     static bool CanShow(string path) => !Path.GetFileName(path).Contains("bad", StringComparison.OrdinalIgnoreCase);

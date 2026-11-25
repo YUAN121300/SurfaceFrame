@@ -19,8 +19,9 @@ A lightweight, native **.NET 8 WPF** digital photo frame and **Home Assistant** 
   - Config-driven **Scene Pills** (`trigger`, `turn_off`, `toggle`), **4×3 Light Grid**, **Multi-Entity Combined Curtains** (`entityIds`), and **Switch Controls** with explicit state confirmation, 5-second timeout detection, and one-tap retry.
 - **Bento Status & Energy Dashboard (Screen 3 — 3-finger swipe right)**
   - Fully config-driven Bento cards: Outdoor weather + indoor rooms, EV battery/range/climate, heating & AC, **monthly daily stacked electricity/gas cost bar chart**, and appliance/UPS device statuses.
-- **Presence-Driven True Monitor Power Control**
+- **Presence-Driven & Remote Display Control**
   - Watches one configured Home Assistant presence entity (`person.*` / `device_tracker.*`).
+  - Optional remote Home Assistant helpers (`remoteLockEntityId` / `remoteAlbumEntityId`, e.g. `input_boolean.surface_frame_lock` & `input_select.surface_frame_album`) allow locking/waking the frame or switching Immich albums from Home Assistant, HomeKit, or AI assistants via HA MCP.
   - After 10 consecutive minutes away (pausing on `unknown`/`unavailable`/disconnect), covers the screen with a black shield and requests true Windows display power-off (`SC_MONITORPOWER`), keeping Windows awake/reachable over SSH/RustDesk; automatically wakes straight back to photos when home.
   - Leaves ambient-light auto-brightness to Windows native adaptive brightness (`ADAPTBRIGHT`).
 

@@ -116,6 +116,12 @@ sealed class HaRuntime : IDisposable
             return _logic.TryCallService(domain, service, target, out var json) && DispatchCommand(json!, now);
     }
 
+    public bool CallServiceData(string domain, string service, object target, object? serviceData, DateTime now)
+    {
+        lock (_gate)
+            return _logic.TryCallService(domain, service, target, serviceData, out var json) && DispatchCommand(json!, now);
+    }
+
     bool DispatchCommand(string json, DateTime now)
     {
         if (_demo != null)
